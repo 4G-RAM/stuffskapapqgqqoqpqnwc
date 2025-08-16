@@ -458,7 +458,6 @@ function handleEvent(event) {
                 }
                 break;
             }
-            // Will be removed in the future, using log:thread-image instead
             case "change_thread_image":
                 global.plugins.events.get("thread-image")({ event });
                 break;
@@ -480,5 +479,7 @@ export default async function () {
         handleMessage,
         handleUnsend,
         handleEvent,
+        onStart: handleCommand, // Added for GoatBot system
+        onReply: handleReply,   // Added for GoatBot system
     };
 }
