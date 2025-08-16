@@ -28,10 +28,9 @@ const categories = {
   ]
 };
 
-// Pagination constant
 const PAGE_SIZE = 5;
 
-// Command call হলে category list দেখানো
+// ✅ main command
 export async function onCall({ message, args }) {
   const categoryKeys = Object.keys(categories);
   const page = parseInt(args[0]) || 1;
@@ -55,64 +54,75 @@ export async function onCall({ message, args }) {
 
   const replyMsg = await message.reply(msg);
 
-  // 30 সেকেন্ড পরে auto unsend
+  // ✅ Save reply context
+  message.saveReply({
+    type: "selectCategory",
+    categoryKeys,
+    pageCategories
+  });
+
+  // Auto unsend
   setTimeout(() => {
     replyMsg.unsend().catch(() => {});
   }, 30000);
-
-  // Reply handle
-  message.addReplyEvent({
-    type: "selectCategory",
-    categoryKeys,
-    pageCategories,
-    callback: async ({ message: replyMessage, body }) => {
-      const choice = parseInt(body);
-      if (!choice || choice < 1 || choice > categoryKeys.length) {
-        return replyMessage.reply("Invalid choice. Try again.");
-      }
-
-      const selectedCategory = categoryKeys[choice - 1];
-      const videos = categories[selectedCategory];
-
-      // Loading message
-      const loadingMsg = await replyMessage.reply(`⏳ Loading ${selectedCategory}...`);
-
-      let videoMsg = `Category: ${selectedCategory}\n\n`;
-      videos.forEach((v, i) => {
-        videoMsg += `${i + 1}. ${v}\n`;
-      });
-      videoMsg += "\nReply with number to get video.";
-
-      const replyCategoryMsg = await replyMessage.reply(videoMsg);
-
-      // Remove loading message
-      await replyMessage.unsend(loadingMsg.messageID);
-
-      // Auto unsend category list after 30 seconds
-      setTimeout(() => {
-        replyCategoryMsg.unsend().catch(() => {});
-      }, 30000);
-
-      // Save for video selection
-      replyCategoryMsg.addReplyEvent({
-        type: "selectVideo",
-        videos,
-        callback: async ({ message: videoMessage, body }) => {
-          const videoChoice = parseInt(body);
-          if (!videoChoice || videoChoice < 1 || videoChoice > videos.length) {
-            return videoMessage.reply("Invalid choice. Try again.");
-          }
-
-          // Loading before sending video
-          const loadingVideo = await videoMessage.reply(`⏳ Sending video...`);
-
-          const videoURL = videos[videoChoice - 1];
-          await videoMessage.reply({ attachment: videoURL });
-
-          // Remove loading video message
-          await videoMessage.unsend(loadingVideo.messageID);
-        }
-      });
-    }
-  });
 }
+
+// ✅ reply handler
+export async function handleReply({ message, eventData }) {
+  const body = message.body?.trim();
+  const choice = parseInt(body);
+
+  // Category selected
+  if (eventData.type === "selectCategory") {
+    const { categoryKeys } = eventData;
+
+    if (!choice || choice < 1 || choice > categoryKeys.length) {
+      return message.reply("Invalid category number. Try again.");
+    }
+
+    const selectedCategory = categoryKeys[choice - 1];
+    const videos = categories[selectedCategory];
+
+    const loadingMsg = await message.reply(`⏳ Loading ${selectedCategory}...`);
+
+    let videoList = `📂 Category: ${selectedCategory}\n\n`;
+    videos.forEach((v, i) => {
+      videoList += `${i + 1}. ${v}\n`;
+    });
+    videoList += `\nReply with number to get the video.`;
+
+    const videoMsg = await message.reply(videoList);
+
+    await message.unsend(loadingMsg.messageID);
+
+    message.saveReply({
+      type: "selectVideo",
+      videos
+    });
+
+    setTimeout(() => videoMsg.unsend().catch(() => {}), 30000);
+  }
+
+  // Video selected
+  else if (eventData.type === "selectVideo") {
+    const { videos } = eventData;
+
+    if (!choice || choice < 1 || choice > videos.length) {
+      return message.reply("Invalid video number. Try again.");
+    }
+
+    const loading = await message.reply("⏳ Sending video...");
+
+    const videoURL = videos[choice - 1];
+    await message.reply({ attachment: videoURL });
+
+    await message.unsend(loading.messageID);
+  }
+}
+
+// ✅ Final export
+export default {
+  config,
+  onCall,
+  handleReply
+};
