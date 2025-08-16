@@ -1,16 +1,17 @@
 var resend;
-
+ 
 function checkBanStatus(data = {}, userID) {
     if (
         data?.user?.banned === true ||
         data?.thread?.banned === true ||
-        data?.thread?.info?.members?.find((e) => e.userID == userID)?.banned === true
+        data?.thread?.info?.members?.find((e) => e.userID == userID)?.banned ===
+            true
     )
         return true;
-
+ 
     return false;
 }
-
+ 
 function getExtraEventProperties(event, { type, commandName }) {
     const { api } = global;
     const { threadID, messageID, senderID, userID } = event;
@@ -68,12 +69,12 @@ function getExtraEventProperties(event, { type, commandName }) {
             });
         },
     };
-
+ 
     if (isReaction) {
         delete extraEventProperties.reply;
         delete extraEventProperties.react;
     }
-
+ 
     const messageFunctionCallback = (data, targetSendID) => {
         const baseInput = {
             threadID: targetSendID,
@@ -82,11 +83,11 @@ function getExtraEventProperties(event, { type, commandName }) {
             author_only: true,
             name: commandName,
         };
-
+ 
         data.addReplyEvent = function (data = {}, standbyTime = 60000) {
             if (typeof data !== "object" || Array.isArray(data)) return;
             if (typeof data.callback !== "function") return;
-
+ 
             const input = Object.assign(baseInput, data);
             global.client.replies.set(input.messageID, input);
             if (standbyTime > 0) {
@@ -100,7 +101,7 @@ function getExtraEventProperties(event, { type, commandName }) {
         data.addReactEvent = function (data = {}, standbyTime = 60000) {
             if (typeof data !== "object" || Array.isArray(data)) return;
             if (typeof data.callback !== "function") return;
-
+ 
             const input = Object.assign(baseInput, data);
             global.client.reactions.set(input.messageID, input);
             if (standbyTime > 0) {
@@ -120,78 +121,72 @@ function getExtraEventProperties(event, { type, commandName }) {
                 delay > 0 ? delay : 0
             );
         };
-
+ 
         return data;
     };
-
+ 
     return extraEventProperties;
 }
-
+ 
 function findCommand(commandName) {
     const commandsAliases = global.plugins.commandsAliases;
     const commands = global.plugins.commands;
-
+ 
     if (commands.has(commandName)) return commandName;
-
+ 
     for (const [command, alias] of commandsAliases) {
         if (alias.includes(commandName)) return command;
     }
-
+ 
     return null;
 }
-
+ 
 function getUserPermissions(userID, _thread) {
     const { MODERATORS } = global.config;
     const adminIDs = _thread?.adminIDs || [];
-
+ 
     let permissions = [0];
-
+ 
     if (adminIDs.some((e) => e == userID)) permissions.push(1);
     if (MODERATORS.includes(userID)) permissions.push(2);
-
+ 
     return permissions;
 }
-
+ 
 function checkPermission(permissions, userPermissions) {
     if (permissions.length === 0 || userPermissions.length === 0) return false;
-
+ 
     return permissions.some((permission) =>
         userPermissions.includes(permission)
     );
 }
-
+ 
 async function handleCommand(event) {
     const { threadID, messageID, senderID, args } = event;
     const { Threads, Users } = global.controllers;
     const _thread =
         event.isGroup === true ? (await Threads.get(threadID)) || {} : {};
     const _user = (await Users.get(senderID)) || {};
-
+ 
     const data = { thread: _thread, user: _user };
     if (checkBanStatus(data, senderID)) return;
-
+ 
     const prefix = (_thread?.data?.prefix || global.config.PREFIX || "x")
         .trim()
         .toLowerCase();
-
-    const isPrefixedCommand = args.length > 0 && args[0].startsWith(prefix);
-    const commandRawName = isPrefixedCommand
-        ? args[0].slice(prefix.length).toLowerCase()
-        : args[0]?.toLowerCase();
-
-    const commandName = findCommand(commandRawName);
-    const command = global.plugins.commands.get(commandName) || null;
-    const commandInfo = global.plugins.commandsConfig.get(commandName);
-
-    if (command !== null) {
-        const requiresPrefix = commandInfo.usePrefix !== false;
-        if (!requiresPrefix || isPrefixedCommand) {
-            const { api, getLang } = global;
+ 
+    if (args.length > 0 && args[0].startsWith(prefix)) {
+        const { api, getLang } = global;
+        const commandName = findCommand(
+            args[0].slice(prefix.length)?.toLowerCase()
+        );
+        const command = global.plugins.commands.get(commandName) || null;
+        const commandInfo = global.plugins.commandsConfig.get(commandName);
+ 
+        if (command !== null) {
             const { cooldowns } = global.client;
-
             const permissions = commandInfo.permissions || [0];
             const userPermissions = getUserPermissions(senderID, _thread?.info);
-
             const isAbsoluteUser = global.config?.ABSOLUTES.some(
                 (e) => e == senderID
             );
@@ -200,18 +195,18 @@ async function handleCommand(event) {
                 : true;
             const isValidUser =
                 checkPermission(permissions, userPermissions) && checkAbsolute;
-
+ 
             if (isValidUser) {
                 const userCooldown = cooldowns.get(senderID) || {};
                 const isReady =
                     !userCooldown[commandName] ||
                     Date.now() - userCooldown[commandName] >=
                         (commandInfo.cooldown || 3) * 1000;
-
+ 
                 if (isReady) {
                     const isNSFWEnabled = _thread?.data?.nsfw === true;
                     const isCommandNSFW = commandInfo.nsfw === true;
-
+ 
                     if (
                         (isNSFWEnabled && isCommandNSFW) ||
                         !isCommandNSFW ||
@@ -219,22 +214,22 @@ async function handleCommand(event) {
                     ) {
                         userCooldown[commandName] = Date.now();
                         cooldowns.set(senderID, userCooldown);
-
+ 
                         let TLang =
                             _thread?.data?.language ||
                             global.config.LANGUAGE ||
                             "en_US";
                         const getLangForCommand = (key, objectData) =>
                             getLang(key, objectData, commandName, TLang);
-
+ 
                         const extraEventProperties = getExtraEventProperties(
                             event,
                             { type: "command", commandName }
                         );
                         Object.assign(event, extraEventProperties);
-
+ 
                         const extra = commandInfo.extra || {};
-
+ 
                         try {
                             command({
                                 message: event,
@@ -266,50 +261,52 @@ async function handleCommand(event) {
                     api.setMessageReaction("🕓", messageID, null, true);
                 }
             } else {
-                // User has no permission - optionally handle this
+                // Do something when user don't have enough permissions
+                // Làm gì đó khi người dùng không có đủ quyền hạn
             }
+        } else {
+            // Do something when command not found
+            // Làm gì đó khi không tìm thấy lệnh
         }
-    } else {
-        // Command not found - optionally handle this
     }
 }
-
+ 
 async function handleReaction(event) {
     const { threadID, messageID, userID } = event;
     const { Threads, Users } = global.controllers;
     let isValidReaction = global.client.reactions.has(messageID);
-
+ 
     if (isValidReaction) {
         const _thread =
             event.senderID != event.threadID && event.userID != event.threadID
                 ? (await Threads.get(threadID)) || {}
                 : {};
         const _user = (await Users.get(userID)) || {};
-
+ 
         const data = { user: _user, thread: _thread };
         if (checkBanStatus(data, userID)) return;
-
+ 
         const { api, getLang } = global;
         const eventData = global.client.reactions.get(messageID);
         const commandName = eventData.name;
-
+ 
         if (eventData.author_only === true && eventData.author !== userID)
             return;
-
+ 
         let TLang =
             _thread?.data?.language || global.config.LANGUAGE || "en_US";
         const getLangForCommand = (key, objectData) =>
             getLang(key, objectData, commandName, TLang);
-
+ 
         const extraEventProperties = getExtraEventProperties(event, {
             type: "reaction",
             commandName,
         });
         Object.assign(event, extraEventProperties);
-
+ 
         const _eventData = Object.assign({}, eventData);
         delete _eventData.callback;
-
+ 
         try {
             eventData.callback({
                 message: event,
@@ -329,42 +326,42 @@ async function handleReaction(event) {
         }
     }
 }
-
+ 
 async function handleReply(event) {
     const { threadID, messageID, senderID, messageReply } = event;
     if (!messageReply) return;
     const { Threads, Users } = global.controllers;
     let isValidReply = global.client.replies.has(messageReply.messageID);
-
+ 
     if (isValidReply) {
         const _thread =
             event.isGroup === true ? (await Threads.get(threadID)) || {} : {};
         const _user = (await Users.get(senderID)) || {};
-
+ 
         const data = { user: _user, thread: _thread };
         if (checkBanStatus(data, senderID)) return;
-
+ 
         const { api, getLang } = global;
         const eventData = global.client.replies.get(messageReply.messageID);
         const commandName = eventData.name;
-
+ 
         if (eventData.author_only === true && eventData.author !== senderID)
             return;
-
+ 
         let TLang =
             _thread?.data?.language || global.config.LANGUAGE || "en_US";
         const getLangForCommand = (key, objectData) =>
             getLang(key, objectData, commandName, TLang);
-
+ 
         const extraEventProperties = getExtraEventProperties(event, {
             type: "reply",
             commandName,
         });
         Object.assign(event, extraEventProperties);
-
+ 
         const _eventData = Object.assign({}, eventData);
         delete _eventData.callback;
-
+ 
         try {
             eventData.callback({
                 message: event,
@@ -384,19 +381,19 @@ async function handleReply(event) {
         }
     }
 }
-
+ 
 async function handleMessage(event) {
     const { api, getLang } = global;
     const { threadID, senderID } = event;
     const { Threads, Users } = global.controllers;
-
+ 
     const _thread =
         event.isGroup === true ? (await Threads.get(threadID)) || {} : {};
     const _user = (await Users.get(senderID)) || {};
-
+ 
     const data = { user: _user, thread: _thread };
     if (checkBanStatus(data, senderID)) return;
-
+ 
     for (const [name, callback] of global.plugins.onMessage.entries()) {
         try {
             let TLang =
@@ -408,7 +405,7 @@ async function handleMessage(event) {
                 commandName: name,
             });
             Object.assign(event, extraEventProperties);
-
+ 
             callback({
                 message: event,
                 getLang: getLangForCommand,
@@ -419,13 +416,13 @@ async function handleMessage(event) {
         }
     }
 }
-
+ 
 function handleUnsend(event) {
     if (event.senderID == event.threadID || global.botID == event.threadID)
         return;
     resend.default({ event });
 }
-
+ 
 function handleEvent(event) {
     try {
         switch (event.type) {
@@ -450,14 +447,15 @@ function handleEvent(event) {
                     case "log:thread-admins":
                         global.plugins.events.get("thread-update")({ event });
                         break;
-                    case "log:thread-image":
-                        global.plugins.events.get("thread-image")({ event });
-                        break;
+										case "log:thread-image":
+												global.plugins.events.get("thread-image")({ event });
+												break;
                     default:
                         break;
                 }
                 break;
             }
+						// Will be removed in the future, using log:thread-image instead
             case "change_thread_image":
                 global.plugins.events.get("thread-image")({ event });
                 break;
@@ -468,10 +466,10 @@ function handleEvent(event) {
         console.error(err);
     }
 }
-
+ 
 export default async function () {
     resend = await import("../../plugins/resend.js");
-
+ 
     return {
         handleCommand,
         handleReaction,
@@ -479,7 +477,5 @@ export default async function () {
         handleMessage,
         handleUnsend,
         handleEvent,
-        onStart: handleCommand, // Added for GoatBot system
-        onReply: handleReply,   // Added for GoatBot system
     };
-}
+                    }
